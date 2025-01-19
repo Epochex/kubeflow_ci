@@ -1,0 +1,53 @@
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: ml-pipeline-triggertemplate
+spec:
+  params:
+    - name: git-repo
+    - name: git-revision
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1beta1
+      kind: PipelineRun
+      metadata:
+        generateName: ml-katib-pipeline-run-
+      spec:
+        pipelineRef:
+          name: ml-katib-pipeline
+        workspaces:
+          - name: shared-workspace
+            persistentVolumeClaim:
+              claimName: your-pvc  # 在此PVC中可能包含Data, 也存储源码
+        params:
+          - name: git-repo
+            value: "$(tt.params.git-repo)"
+          - name: git-revision
+            value: "$(tt.params.git-revision)"
+          - name: image-url
+            value: "your-registry.io/ml-tekton-katib:latest"
+
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: ml-pipeline-triggerbinding
+spec:
+  params:
+    - name: git-repo
+      value: "$(body.repository.url)"
+    - name: git-revision
+      value: "$(body.head_commit.id)"
+
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: ml-pipeline-listener
+spec:
+  serviceAccountName: pipeline
+  triggers:
+    - name: ml-ci-trigger
+      binding:
+        ref: ml-pipeline-triggerbinding
+      template:
+        ref: ml-pipeline-triggertemplate

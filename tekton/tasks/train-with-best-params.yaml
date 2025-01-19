@@ -1,0 +1,27 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: train-with-best-params
+spec:
+  params:
+  - name: BEST_LR
+    type: string
+    default: "0.001"
+  - name: BEST_BS
+    type: string
+    default: "32"
+  workspaces:
+  - name: source
+  - name: data
+  steps:
+  - name: final-train
+    # 用跟我们构建的同一个镜像(已经包含train_final.py)
+    image: "your-registry.io/ml-tekton-katib:latest"
+    workingDir: /workspace/source
+    script: |
+      #!/usr/bin/env bash
+      echo "Final training with LR=$(params.BEST_LR), BS=$(params.BEST_BS)"
+      python /app/scripts/train_final.py $(params.BEST_LR) $(params.BEST_BS)
+
+      # /workspace/model/model.pt 是保存好的模型
+      # 如果需要上传到MinIO, 这里可以加 mc 或 boto3 命令

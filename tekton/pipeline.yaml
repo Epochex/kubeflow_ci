@@ -1,0 +1,53 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: ml-katib-pipeline
+spec:
+  workspaces:
+    - name: shared-workspace
+  params:
+    - name: git-repo
+      type: string
+    - name: git-revision
+      type: string
+    - name: image-url
+      type: string
+      description: "The final image name to push"
+      default: "your-registry.io/ml-tekton-katib:latest"
+  tasks:
+  - name: build-image
+    taskRef:
+      name: build-image-task
+    workspaces:
+      - name: source
+        workspace: shared-workspace
+    params:
+      - name: IMAGE
+        value: "$(params.image-url)"
+
+  - name: run-katib
+    runAfter:
+      - build-image
+    taskRef:
+      name: run-katib-task
+    # 这里无需workspaces, 但Katib试验本身需要PVC访问数据 
+    # 可在Katib YAML中指定
+    params:
+      - name: KATIB_EXPERIMENT_FILE
+        value: "katib/katib-experiment.yaml"
+    
+  - name: train-final
+    runAfter:
+      - run-katib
+    taskRef:
+      name: train-with-best-params
+    workspaces:
+      - name: source
+        workspace: shared-workspace
+      - name: data
+        workspace: shared-workspace
+    params:
+      - name: BEST_LR
+        value: "$(tasks.run-katib.results.best-learning-rate)"
+      - name: BEST_BS
+        value: "$(tasks.run-katib.results.best-batch-size)"
