@@ -1,3 +1,5 @@
+# tekton/tasks/build-image-task.yaml
+
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
@@ -6,15 +8,19 @@ spec:
   params:
     - name: IMAGE
       type: string
-      description: "The image name to build and push (e.g. your-registry.io/ml-tekton-katib:latest)"
+      description: "The image name:tag to build and push, e.g. docker.io/hirschazer/kubeflow_ci:latest"
   workspaces:
-  - name: source
+    - name: source
+      description: "Workspace that contains the Dockerfile and project code"
   steps:
-  - name: build-and-push
-    image: gcr.io/kaniko-project/executor:latest
-    args:
-      - "--dockerfile=$(workspaces.source.path)/Dockerfile"
-      - "--context=$(workspaces.source.path)"
-      - "--destination=$(params.IMAGE)"
-      - "--insecure"
-      # 如果仓库需要认证，也需要通过Secret/ServiceAccount指定credentials
+    - name: build-and-push
+      image: gcr.io/kaniko-project/executor:latest
+      workingDir: /workspace/source
+      args:
+        - "--dockerfile=Dockerfile"
+        - "--context=/workspace/source"
+        - "--destination=$(params.IMAGE)"
+        # 如需不校验仓库TLS可加 --skip-tls-verify --insecure
+        #   - "--skip-tls-verify=true"
+        #   - "--insecure"
+
