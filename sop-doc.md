@@ -85,7 +85,7 @@ git commit -m "Initial commit"
 git push -u origin master
 
 Developer settings → Personal access tokens → Tokens (classic)。
-token: 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
+use token
 
 私有/公共仓库都可以。若是私有，需要在后续 Tekton Triggers 中配置 GitHub Token/Secret 用于 Webhook 验证，这里先简化不做配置。
 
@@ -94,6 +94,12 @@ git config --global credential.helper store
 之后再次推送时，输入用户名和令牌，Git 会自动保存到 ~/.git-credentials 文件中。
 
 # 要让 Tekton（Kaniko）能推到 Docker Hub，需要在集群里创建一个docker-registry类型的 Secret，然后给 Pipeline/Task 绑定
+查看当前serviceaccount
+kubectl get serviceaccount -n default
+如果没有pipeline的serviceaccount话需要创建一个
+kubectl create serviceaccount pipeline -n default
+
+
 # 1) 在 K8s 集群里创建 Secret
 kubectl create secret docker-registry docker-cred \
   --docker-username=hirschazer \
@@ -106,6 +112,10 @@ kubectl create secret docker-registry docker-cred \
 kubectl patch serviceaccount pipeline \
   -p '{"imagePullSecrets": [{"name": "docker-cred"}]}' \
   -n default
+
+这样Kaniko 在推镜像时，就能拿到 Docker Hub 的认证。
+
+
 
 
 
