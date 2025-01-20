@@ -14,7 +14,7 @@ def main():
     batch_size = int(sys.argv[2])
 
     # 读取数据
-    df = pd.read_csv("/workspace/data/dataset.csv")
+    df = pd.read_csv("/workspace/data/load_stimulus_global.csv")
     feature_cols = ["input_rate", "output_rate", "latency"]
     df["label"] = (df["latency"] > 6.0).astype(int)
 

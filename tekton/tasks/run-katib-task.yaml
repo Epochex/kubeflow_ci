@@ -1,53 +1,48 @@
+# tekton/tasks/run-katib-task.yaml
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: run-katib-task
 spec:
   params:
-  - name: KATIB_EXPERIMENT_FILE
-    type: string
-    default: "katib/katib-experiment.yaml"
+    - name: KATIB_EXPERIMENT_FILE
+      type: string
+      default: "katib/katib-experiment.yaml"
   results:
-  - name: best-learning-rate
-  - name: best-batch-size
+    - name: best-learning-rate
+    - name: best-batch-size
   steps:
-  - name: apply-katib
-    image: bitnami/kubectl:latest
-    script: |
-      #!/usr/bin/env sh
-      echo "Applying Katib Experiment..."
-      kubectl apply -f $(params.KATIB_EXPERIMENT_FILE)
+    - name: apply-katib
+      image: bitnami/kubectl:latest
+      script: |
+        #!/usr/bin/env sh
+        echo "Applying Katib Experiment..."
+        kubectl apply -f $(params.KATIB_EXPERIMENT_FILE)
 
-  - name: wait-katib
-    image: bitnami/kubectl:latest
-    script: |
-      #!/usr/bin/env sh
-      EXP_NAME=$(yq e '.metadata.name' $(params.KATIB_EXPERIMENT_FILE))
-      echo "Waiting for Katib Experiment: $EXP_NAME to be completed..."
+    - name: wait-katib
+      image: bitnami/kubectl:latest
+      script: |
+        #!/usr/bin/env sh
+        EXP_NAME=$(yq e '.metadata.name' $(params.KATIB_EXPERIMENT_FILE))
+        echo "Waiting for Katib Experiment: $EXP_NAME..."
 
-      while true
-      do
-        STATUS_JSON=$(kubectl get experiment $EXP_NAME -o json || true)
-        PHASE=$(echo $STATUS_JSON | jq -r '.status.conditions[] | select(.type=="Succeeded")?.status')
-        if [ "$PHASE" = "True" ]; then
-          echo "Katib Experiment Succeeded!"
-          break
-        fi
-        echo "Still waiting..."
-        sleep 10
-      done
+        while true
+        do
+          STATUS_JSON=$(kubectl get experiment $EXP_NAME -o json || true)
+          PHASE=$(echo $STATUS_JSON | jq -r '.status.conditions[] | select(.type=="Succeeded")?.status')
+          if [ "$PHASE" = "True" ]; then
+            echo "Katib Experiment Succeeded!"
+            break
+          fi
+          echo "Still waiting..."
+          sleep 10
+        done
 
-      # 读取最优Trial信息
-      BEST_TRIAL=$(echo $STATUS_JSON | jq -r '.status.currentOptimalTrial.parameterAssignments')
-      echo "Best Trial param assignments: $BEST_TRIAL"
+        BEST_TRIAL=$(echo $STATUS_JSON | jq -r '.status.currentOptimalTrial.parameterAssignments')
+        echo "Best Trial param assignments: $BEST_TRIAL"
 
-      # e.g. BEST_TRIAL is like:
-      # [
-      #   {"name":"learning_rate","value":"0.005"},
-      #   {"name":"batch_size","value":"32"}
-      # ]
-      BEST_LR=$(echo $BEST_TRIAL | jq -r '.[] | select(.name=="learning_rate") | .value')
-      BEST_BS=$(echo $BEST_TRIAL | jq -r '.[] | select(.name=="batch_size") | .value')
+        BEST_LR=$(echo $BEST_TRIAL | jq -r '.[] | select(.name=="learning_rate") | .value')
+        BEST_BS=$(echo $BEST_TRIAL | jq -r '.[] | select(.name=="batch_size") | .value')
 
-      echo "best-learning-rate=$BEST_LR" >> /tekton/results/best-learning-rate
-      echo "best-batch-size=$BEST_BS" >> /tekton/results/best-batch-size
+        echo "best-learning-rate=$BEST_LR" >> /tekton/results/best-learning-rate
+        echo "best-batch-size=$BEST_BS" >> /tekton/results/best-batch-size

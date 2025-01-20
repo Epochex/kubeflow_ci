@@ -1,5 +1,4 @@
 # tekton/tasks/build-image-task.yaml
-
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
@@ -11,7 +10,7 @@ spec:
       description: "The image name:tag to build and push, e.g. docker.io/hirschazer/kubeflow_ci:latest"
   workspaces:
     - name: source
-      description: "Workspace that contains the Dockerfile and project code"
+      description: "Workspace containing Dockerfile, code"
   steps:
     - name: build-and-push
       image: gcr.io/kaniko-project/executor:latest
@@ -20,7 +19,4 @@ spec:
         - "--dockerfile=Dockerfile"
         - "--context=/workspace/source"
         - "--destination=$(params.IMAGE)"
-        # 如需不校验仓库TLS可加 --skip-tls-verify --insecure
-        #   - "--skip-tls-verify=true"
-        #   - "--insecure"
-
+      # 如果需要私有仓库, 确保已在集群创建 docker-registry Secret 并绑定 ServiceAccount

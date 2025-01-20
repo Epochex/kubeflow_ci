@@ -1,30 +1,75 @@
 # tekton/pipeline.yaml
-
-# 这样一个最小 Pipeline，执行时只需要给它提供：
-# 一个Workspace（里面有 Dockerfile、项目代码）；
-# image-url 参数；
-# 就能完成镜像的 build & push
-
 apiVersion: tekton.dev/v1beta1
 kind: Pipeline
 metadata:
   name: build-image-pipeline
 spec:
+  # 1) 声明 Pipeline 所需的 workspaces
   workspaces:
     - name: shared-workspace
+    - name: data-workspace
+
   params:
+    - name: git-url
+      type: string
+      default: "https://github.com/Epochex/kubeflow_ci.git"
+    - name: git-revision
+      type: string
+      default: "main"
     - name: image-url
       type: string
-      description: "Full Docker image path, e.g. docker.io/hirschazer/kubeflow_ci:latest"
       default: "docker.io/hirschazer/kubeflow_ci:latest"
+    - name: katib-experiment-file
+      type: string
+      default: "katib/katib-experiment.yaml"
+
   tasks:
-    - name: build-image
+    - name: git-clone
       taskRef:
-        name: build-image-task
+        name: git-clone-task
+      params:
+        - name: url
+          value: "$(params.git-url)"
+        - name: revision
+          value: "$(params.git-revision)"
       workspaces:
         - name: source
           workspace: shared-workspace
+
+    - name: build-image
+      runAfter:
+        - git-clone
+      taskRef:
+        name: build-image-task
       params:
         - name: IMAGE
           value: "$(params.image-url)"
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+
+    - name: run-katib
+      runAfter:
+        - build-image
+      taskRef:
+        name: run-katib-task
+      params:
+        - name: KATIB_EXPERIMENT_FILE
+          value: "$(params.katib-experiment-file)"
+
+    - name: train-with-best-params
+      runAfter:
+        - run-katib
+      taskRef:
+        name: train-with-best-params
+      params:
+        - name: BEST_LR
+          value: "$(tasks.run-katib.results.best-learning-rate)"
+        - name: BEST_BS
+          value: "$(tasks.run-katib.results.best-batch-size)"
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+        - name: data
+          workspace: data-workspace
 

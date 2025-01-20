@@ -1,0 +1,41 @@
+# kubeflow_ci/tekton/pipeline-run.yaml
+
+# 如果没有创建就解注释apply
+# 1) PVC 定义
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ci-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+
+# 2) PipelineRun 定义
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  name: build-image-run
+spec:
+  pipelineRef:
+    name: build-image-pipeline
+  workspaces:
+    - name: shared-workspace
+      persistentVolumeClaim:
+        claimName: ci-pvc
+    - name: data-workspace
+      emptyDir: {}  # 或者绑定另一个 PVC，根据你的需求调整
+  params:
+    - name: git-url
+      value: "https://github.com/Epochex/kubeflow_ci.git"
+    - name: git-revision
+      value: "main"
+    - name: image-url
+      value: "docker.io/hirschazer/kubeflow_ci:latest"
+
+
+
+

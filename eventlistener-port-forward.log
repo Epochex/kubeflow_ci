@@ -1,0 +1,13 @@
+nohup: ignoring input
+Forwarding from 0.0.0.0:8081 -> 8080
+Handling connection for 8081
+Handling connection for 8081
+Handling connection for 8081
+Handling connection for 8081
+Handling connection for 8081
+Handling connection for 8081
+Handling connection for 8081
+Handling connection for 8081
+Handling connection for 8081
+E0120 05:03:49.522609  935432 portforward.go:424] "Unhandled Error" err="an error occurred forwarding 8081 -> 8080: error forwarding port 8080 to pod 88ef1e71e387863280f1248efe53ccfefe3a9e67ff7ec879006b7e317df38b03, uid : failed to find sandbox \"88ef1e71e387863280f1248efe53ccfefe3a9e67ff7ec879006b7e317df38b03\" in store: not found"
+error: lost connection to pod
