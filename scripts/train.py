@@ -1,4 +1,4 @@
-# scripts/train.py
+# kubeflow_ci/scripts/train.py
 import sys
 import os
 import pandas as pd

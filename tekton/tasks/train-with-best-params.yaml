@@ -1,4 +1,4 @@
-# tekton/tasks/train-with-best-params.yaml
+# kubeflow_ci/tekton/tasks/train-with-best-params.yaml
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
@@ -11,17 +11,29 @@ spec:
     - name: BEST_BS
       type: string
       default: "32"
+
+  # 同样需要访问源代码(脚本) 和数据
   workspaces:
     - name: source
+      description: "Workspace containing the training code"
     - name: data
+      description: "Workspace containing data"
+
   steps:
     - name: final-train
-      # 指定我们构建好的镜像
-      image: "docker.io/hirschazer/kubeflow_ci:latest"
+      # 使用我们已构建的镜像
+      image: docker.io/hirschazer/kubeflow_ci:latest
+      workingDir: /workspace/source  # 这里里面就有 scripts/train_final.py
       script: |
-        #!/usr/bin/env bash
-        echo "Final training with LR=$(params.BEST_LR), BS=$(params.BEST_BS)"
-        python /app/scripts/train_final.py $(params.BEST_LR) $(params.BEST_BS)
+        #!/bin/sh
+        echo "=== Final training with best hyperparams ==="
+        echo "LR: $(params.BEST_LR), BS: $(params.BEST_BS)"
 
-        # /workspace/model/model.pt 是保存好的模型
-        # 这里可以加把模型上传到MinIO的步骤
+        # train_final.py <learning_rate> <batch_size>
+        python scripts/train_final.py $(params.BEST_LR) $(params.BEST_BS)
+
+        # 如果需要看 /workspace/data 内容
+        echo "=== Checking data volume ==="
+        ls -al /workspace/data
+
+        echo "=== Final training completed ==="

@@ -1,4 +1,4 @@
-# katib/katib-experiment.yaml
+# kubeflow_ci/katib/katib-experiment.yaml
 apiVersion: kubeflow.org/v1beta1
 kind: Experiment
 metadata:
@@ -41,20 +41,13 @@ spec:
           spec:
             restartPolicy: Never
             containers:
-            - name: training-container
-              # 这里要用我们自己构建推到镜像仓库后的image
-              image: "your-registry.io/ml-tekton-katib:latest"
-              command:
-              - "python"
-              - "/app/scripts/train.py"
-              - "--lr=${trialParameters.lr}"
-              - "--batch_size=${trialParameters.bs}"
-              volumeMounts:
-              - name: dataset-volume
-                mountPath: /workspace/data
-          # 这里定义Volume等，如使用PVC
-          volumes:
-          - name: dataset-volume
-            persistentVolumeClaim:
-              claimName: your-dataset-pvc
+              - name: training-container
+                image: "docker.io/hirschazer/kubeflow_ci:latest" # 使用你推送到 Docker Hub 的镜像
+                command: ["python"]
+                args: [
+                  "/app/scripts/train.py",
+                  "--lr=${trialParameters.lr}",
+                  "--batch_size=${trialParameters.bs}"
+                ]
+
 

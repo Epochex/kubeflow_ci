@@ -1,4 +1,4 @@
-# tekton/tasks/build-image-task.yaml
+# kubeflow_ci/tekton/tasks/build-image-task.yaml
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
@@ -8,15 +8,52 @@ spec:
     - name: IMAGE
       type: string
       description: "The image name:tag to build and push, e.g. docker.io/hirschazer/kubeflow_ci:latest"
+
   workspaces:
     - name: source
       description: "Workspace containing Dockerfile, code"
+
   steps:
+    # Step 1 (可选): Debug workspace contents
+    - name: debug-check-files
+      image: busybox
+      workingDir: /workspace/source
+      script: |
+        #!/bin/sh
+        echo "=== Debugging workspace/source ==="
+        ls -al
+        echo "=================================="
+    
+    # Step 2: Build & push docker image with Kaniko
     - name: build-and-push
       image: gcr.io/kaniko-project/executor:latest
       workingDir: /workspace/source
+
+      # 重点1: 不使用脚本, 而是直接调用 /kaniko/executor (避免Shell依赖)
+      command:
+        - /kaniko/executor
+      
+      # 重点2: 指定构建参数 (Dockerfile、context、目标镜像)
       args:
-        - "--dockerfile=Dockerfile"
-        - "--context=/workspace/source"
-        - "--destination=$(params.IMAGE)"
-      # 如果需要私有仓库, 确保已在集群创建 docker-registry Secret 并绑定 ServiceAccount
+        - --dockerfile=Dockerfile
+        - --context=/workspace/source
+        - --destination=$(params.IMAGE)
+
+      # 重点3: 挂载 docker-cred Secret 到 /kaniko/.docker
+      # volumes 区域将 secretName: docker-cred 里的 .dockerconfigjson 文件挂载为 config.json
+      volumeMounts:
+        - name: docker-config
+          mountPath: /kaniko/.docker
+
+  # 重点4: 定义一个 volumes 区块, 挂载 Secret (docker-cred) 作为 config.json
+  volumes:
+    - name: docker-config
+      secret:
+        secretName: docker-cred
+        items:
+          - key: .dockerconfigjson
+            path: config.json
+
+# volumeMounts 把该 Volume 映射到容器内 /kaniko/.docker 文件夹。
+# Kaniko 会自动读取 /kaniko/.docker/config.json 进行鉴权。
+# 这样就不依赖 ServiceAccount 是否注入 .docker/config.json，手动保证了 Kaniko 有推送权限。

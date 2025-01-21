@@ -1,4 +1,4 @@
-# tekton/tasks/run-katib-task.yaml
+# kubeflow_ci/tekton/tasks/run-katib-task.yaml
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
@@ -7,7 +7,7 @@ spec:
   params:
     - name: KATIB_EXPERIMENT_FILE
       type: string
-      default: "katib/katib-experiment.yaml"
+      default: "katib/katib-experiment.yaml"  # Katib Experiment 定义文件
   results:
     - name: best-learning-rate
     - name: best-batch-size
@@ -44,5 +44,6 @@ spec:
         BEST_LR=$(echo $BEST_TRIAL | jq -r '.[] | select(.name=="learning_rate") | .value')
         BEST_BS=$(echo $BEST_TRIAL | jq -r '.[] | select(.name=="batch_size") | .value')
 
+        # 将最优参数输出到 Tekton Results
         echo "best-learning-rate=$BEST_LR" >> /tekton/results/best-learning-rate
         echo "best-batch-size=$BEST_BS" >> /tekton/results/best-batch-size

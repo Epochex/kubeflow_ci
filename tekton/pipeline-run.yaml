@@ -12,6 +12,7 @@ spec:
   resources:
     requests:
       storage: 10Gi
+  storageClassName: standard # 指定默认 StorageClass
 ---
 
 # 2) PipelineRun 定义
@@ -20,21 +21,29 @@ kind: PipelineRun
 metadata:
   name: build-image-run
 spec:
+  # 这里指定 SA，Tekton 会给所有 task 默认使用这个 SA
+  serviceAccountName: pipeline
+
   pipelineRef:
     name: build-image-pipeline
+
   workspaces:
     - name: shared-workspace
       persistentVolumeClaim:
         claimName: ci-pvc
     - name: data-workspace
-      emptyDir: {}  # 或者绑定另一个 PVC，根据你的需求调整
+      emptyDir: {}
   params:
     - name: git-url
       value: "https://github.com/Epochex/kubeflow_ci.git"
     - name: git-revision
-      value: "main"
+      value: "master"
     - name: image-url
       value: "docker.io/hirschazer/kubeflow_ci:latest"
+    - name: katib-experiment-file
+      value: "katib/katib-experiment.yaml"
+
+
 
 
 

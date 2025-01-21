@@ -1,10 +1,9 @@
-# tekton/pipeline.yaml
+# kubeflow_ci/tekton/pipeline.yaml
 apiVersion: tekton.dev/v1beta1
 kind: Pipeline
 metadata:
   name: build-image-pipeline
 spec:
-  # 1) 声明 Pipeline 所需的 workspaces
   workspaces:
     - name: shared-workspace
     - name: data-workspace
@@ -15,7 +14,7 @@ spec:
       default: "https://github.com/Epochex/kubeflow_ci.git"
     - name: git-revision
       type: string
-      default: "main"
+      default: "master"
     - name: image-url
       type: string
       default: "docker.io/hirschazer/kubeflow_ci:latest"
@@ -24,7 +23,22 @@ spec:
       default: "katib/katib-experiment.yaml"
 
   tasks:
+    - name: pvc-consumer
+      taskSpec:
+        steps:
+          - name: check-pvc
+            image: busybox
+            script: |
+              #!/bin/sh
+              echo "PVC mounted at /workspace/source:"
+              ls -al /workspace/source
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+
     - name: git-clone
+      runAfter:
+        - pvc-consumer
       taskRef:
         name: git-clone-task
       params:
@@ -48,6 +62,7 @@ spec:
         - name: source
           workspace: shared-workspace
 
+    # 新增: run-katib
     - name: run-katib
       runAfter:
         - build-image
@@ -57,6 +72,7 @@ spec:
         - name: KATIB_EXPERIMENT_FILE
           value: "$(params.katib-experiment-file)"
 
+    # 新增: train-with-best-params
     - name: train-with-best-params
       runAfter:
         - run-katib
@@ -73,3 +89,7 @@ spec:
         - name: data
           workspace: data-workspace
 
+
+# runAfter: [build-image]：表示先要构建并推送训练镜像，再做 Katib 超参调优。
+# train-with-best-params 依赖 run-katib，并通过 $(tasks.run-katib.results.best-learning-rate) 获取 Katib 结果。
+# train-with-best-params 也需要 data-workspace，用来加载 CSV 数据，写路径 /workspace/data/xxx.csv

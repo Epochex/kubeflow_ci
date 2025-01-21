@@ -1,4 +1,4 @@
-# tekton/tasks/git-clone-task.yaml
+# kubeflow_ci/tekton/tasks/git-clone-task.yaml
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
@@ -10,7 +10,7 @@ spec:
       description: "Git repository URL to clone"
     - name: revision
       type: string
-      default: "main"
+      default: "master"
   workspaces:
     - name: source
       description: The workspace where to clone the repo

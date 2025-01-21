@@ -1,4 +1,4 @@
-# tekton/triggers.yaml
+# kubeflow_ci/tekton/triggers.yaml
 apiVersion: triggers.tekton.dev/v1beta1
 kind: TriggerTemplate
 metadata:
