@@ -19,6 +19,10 @@ spec:
       image: alpine/git
       script: |
         #!/usr/bin/env sh
-        git clone "$(params.url)" --branch "$(params.revision)" --depth=1 .
+        git init
+        git remote add origin "$(params.url)"
+        git fetch --all --prune  # 拉取最新分支并清理旧分支
+        git reset --hard origin/$(params.revision)  # 强制同步到最新代码
         ls -al
       workingDir: /workspace/source
+
