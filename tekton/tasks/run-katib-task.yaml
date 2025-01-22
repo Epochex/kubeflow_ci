@@ -4,7 +4,7 @@ kind: Task
 metadata:
   name: run-katib-task
 spec:
-  # 重点 1: 声明 workspace, 让该 Task 可以从 Pipeline 的 shared-workspace 中获取文件
+  # 声明 workspace，从 Pipeline 的 shared-workspace 中获取文件
   workspaces:
     - name: source
       description: "Workspace containing the Katib experiment file"
@@ -12,17 +12,17 @@ spec:
   params:
     - name: KATIB_EXPERIMENT_FILE
       type: string
-      default: "katib/katib-experiment.yaml"  # 这个是相对 /workspace/source 的路径
+      default: "katib/katib-experiment.yaml"  # 相对于 /workspace/source 的路径
 
   results:
     - name: best-learning-rate
     - name: best-batch-size
 
   steps:
-    # 可选: 用 busybox 打印 /workspace/source 内容, 确认文件是否存在
+    # Debug workspace 内容，确认 Katib Experiment 文件是否存在
     - name: debug-check-files
       image: busybox
-      workingDir: /workspace/source  # 到 /workspace/source 下查看
+      workingDir: /workspace/source
       script: |
         #!/bin/sh
         echo "=== Debugging /workspace/source ==="
@@ -31,13 +31,15 @@ spec:
         ls -al katib || true
         echo "===================================="
 
+    # 应用 Katib Experiment
     - name: apply-katib
       image: bitnami/kubectl:latest
       workingDir: /workspace/source
       script: |
         #!/usr/bin/env sh
         echo "Checking for existing Experiment..."
-
+        
+        # 获取 Experiment 名称
         EXP_NAME=$(yq e '.metadata.name' $(params.KATIB_EXPERIMENT_FILE))
         EXISTING_EXP=$(kubectl get experiment $EXP_NAME -n default --ignore-not-found)
 
@@ -49,7 +51,7 @@ spec:
         echo "Applying new Experiment..."
         kubectl apply -f $(params.KATIB_EXPERIMENT_FILE)
 
-
+    # 等待 Katib Experiment 完成
     - name: wait-katib
       image: bitnami/kubectl:latest
       workingDir: /workspace/source
@@ -58,24 +60,60 @@ spec:
         EXP_NAME=$(yq e '.metadata.name' $(params.KATIB_EXPERIMENT_FILE))
         echo "Waiting for Katib Experiment: $EXP_NAME..."
 
+        TIMEOUT=600  # 设置最大等待时间（秒）
+        INTERVAL=10  # 检查间隔（秒）
+        ELAPSED=0    # 已等待时间
+
         while true
         do
-          STATUS_JSON=$(kubectl get experiment $EXP_NAME -o json || true)
-          PHASE=$(echo $STATUS_JSON | jq -r '.status.conditions[] | select(.type=="Succeeded")?.status')
+          STATUS_JSON=$(kubectl get experiment $EXP_NAME -n default -o json || true)
+
+          # 检查 Experiment JSON 是否有效
+          if [ -z "$STATUS_JSON" ] || [ "$STATUS_JSON" = "null" ]; then
+            echo "Experiment $EXP_NAME not found. Retrying..."
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+            if [ $ELAPSED -ge $TIMEOUT ]; then
+              echo "Error: Timeout waiting for Experiment to be created."
+              exit 1
+            fi
+            continue
+          fi
+
+          # 检查 Experiment 状态
+          PHASE=$(echo $STATUS_JSON | jq -r '.status.conditions[] | select(.type=="Succeeded").status // empty')
+
           if [ "$PHASE" = "True" ]; then
             echo "Katib Experiment Succeeded!"
             break
           fi
-          echo "Still waiting..."
-          sleep 10
+
+          RUNNING=$(echo $STATUS_JSON | jq -r '.status.conditions[] | select(.type=="Running").status // empty')
+          if [ "$RUNNING" = "True" ]; then
+            echo "Experiment is still running..."
+          fi
+
+          ELAPSED=$((ELAPSED + INTERVAL))
+          if [ $ELAPSED -ge $TIMEOUT ]; then
+            echo "Error: Timeout waiting for Katib Experiment to complete."
+            exit 1
+          fi
+
+          sleep $INTERVAL
         done
 
-        BEST_TRIAL=$(echo $STATUS_JSON | jq -r '.status.currentOptimalTrial.parameterAssignments')
+        # 获取最佳 Trial 参数
+        BEST_TRIAL=$(echo $STATUS_JSON | jq -r '.status.currentOptimalTrial.parameterAssignments // empty')
+        if [ -z "$BEST_TRIAL" ]; then
+          echo "Error: No optimal trial found."
+          exit 1
+        fi
+
         echo "Best Trial param assignments: $BEST_TRIAL"
 
-        BEST_LR=$(echo $BEST_TRIAL | jq -r '.[] | select(.name=="learning_rate") | .value')
-        BEST_BS=$(echo $BEST_TRIAL | jq -r '.[] | select(.name=="batch_size") | .value')
+        BEST_LR=$(echo $BEST_TRIAL | jq -r '.[] | select(.name=="learning_rate") | .value // empty')
+        BEST_BS=$(echo $BEST_TRIAL | jq -r '.[] | select(.name=="batch_size") | .value // empty')
 
-        # 将最优参数输出到 Tekton Results
+        # 输出最佳参数到 Tekton Results
         echo "best-learning-rate=$BEST_LR" >> /tekton/results/best-learning-rate
         echo "best-batch-size=$BEST_BS" >> /tekton/results/best-batch-size
