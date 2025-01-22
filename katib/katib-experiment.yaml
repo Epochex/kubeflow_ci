@@ -3,51 +3,68 @@ apiVersion: kubeflow.org/v1beta1
 kind: Experiment
 metadata:
   name: ann-hpo-experiment
+  namespace: default
 spec:
   objective:
     type: maximize
     goal: 0.95
     objectiveMetricName: "accuracy"
+
   algorithm:
     algorithmName: "random"
+
   parallelTrialCount: 2
   maxTrialCount: 5
   maxFailedTrialCount: 3
+
   parameters:
-  - name: learning_rate
-    parameterType: double
-    feasibleSpace:
-      min: "0.0001"
-      max: "0.01"
-  - name: batch_size
-    parameterType: int
-    feasibleSpace:
-      min: "16"
-      max: "64"
+    - name: learning_rate
+      parameterType: double
+      feasibleSpace:
+        min: "0.0001"
+        max: "0.01"
+    - name: batch_size
+      parameterType: int
+      feasibleSpace:
+        min: "16"
+        max: "64"
+
   trialTemplate:
     primaryContainerName: training-container
     trialParameters:
-    - name: lr
-      description: "learning rate"
-      reference: "learning_rate"
-    - name: bs
-      description: "batch size"
-      reference: "batch_size"
+      - name: lr
+        description: "learning rate"
+        reference: "learning_rate"
+      - name: bs
+        description: "batch size"
+        reference: "batch_size"
+
     trialSpec:
       apiVersion: batch/v1
       kind: Job
       spec:
         template:
           spec:
-            restartPolicy: Never
             containers:
-              - name: training-container
-                image: "docker.io/hirschazer/kubeflow_ci:latest" # 使用你推送到 Docker Hub 的镜像
-                command: ["python"]
-                args: [
-                  "/app/scripts/train.py",
-                  "--lr=${trialParameters.lr}",
-                  "--batch_size=${trialParameters.bs}"
-                ]
+            - name: training-container
+              image: "docker.io/hirschazer/kubeflow_ci:latest"
+              command:
+              - "python"
+              args:
+              - "/app/scripts/train.py"
+              - "--lr=${trialParameters.lr}"
+              - "--batch_size=${trialParameters.bs}"
+              volumeMounts:
+              - name: dataset-volume
+                mountPath: /workspace/data
+
+            volumes:
+            - name: dataset-volume
+              persistentVolumeClaim:
+                claimName: ci-pvc
+
+            restartPolicy: Never
+
+
 
 

@@ -12,7 +12,6 @@ spec:
       type: string
       default: "32"
 
-  # 同样需要访问源代码(脚本) 和数据
   workspaces:
     - name: source
       description: "Workspace containing the training code"
@@ -21,9 +20,8 @@ spec:
 
   steps:
     - name: final-train
-      # 使用我们已构建的镜像
       image: docker.io/hirschazer/kubeflow_ci:latest
-      workingDir: /workspace/source  # 这里里面就有 scripts/train_final.py
+      workingDir: /workspace/source
       script: |
         #!/bin/sh
         echo "=== Final training with best hyperparams ==="
@@ -32,7 +30,6 @@ spec:
         # train_final.py <learning_rate> <batch_size>
         python scripts/train_final.py $(params.BEST_LR) $(params.BEST_BS)
 
-        # 如果需要看 /workspace/data 内容
         echo "=== Checking data volume ==="
         ls -al /workspace/data
 

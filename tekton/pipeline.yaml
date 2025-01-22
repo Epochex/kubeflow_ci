@@ -23,7 +23,15 @@ spec:
       default: "katib/katib-experiment.yaml"
 
   tasks:
+    # 添加 cleanup-katib-task 作为第一个任务
+    - name: cleanup-katib
+      taskRef:
+        name: cleanup-katib-task
+
+    # PVC 检查任务
     - name: pvc-consumer
+      runAfter:
+        - cleanup-katib
       taskSpec:
         steps:
           - name: check-pvc
@@ -36,6 +44,7 @@ spec:
         - name: source
           workspace: shared-workspace
 
+    # Git 克隆任务
     - name: git-clone
       runAfter:
         - pvc-consumer
@@ -50,6 +59,7 @@ spec:
         - name: source
           workspace: shared-workspace
 
+    # 构建镜像任务
     - name: build-image
       runAfter:
         - git-clone
@@ -62,7 +72,7 @@ spec:
         - name: source
           workspace: shared-workspace
 
-    # 新增: run-katib
+    # Katib 超参调优任务
     - name: run-katib
       runAfter:
         - build-image
@@ -71,8 +81,11 @@ spec:
       params:
         - name: KATIB_EXPERIMENT_FILE
           value: "$(params.katib-experiment-file)"
+      workspaces:
+        - name: source
+          workspace: shared-workspace
 
-    # 新增: train-with-best-params
+    # 用最佳超参数进行最终训练的任务
     - name: train-with-best-params
       runAfter:
         - run-katib
@@ -88,6 +101,7 @@ spec:
           workspace: shared-workspace
         - name: data
           workspace: data-workspace
+
 
 
 # runAfter: [build-image]：表示先要构建并推送训练镜像，再做 Katib 超参调优。

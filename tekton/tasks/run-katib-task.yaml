@@ -4,23 +4,55 @@ kind: Task
 metadata:
   name: run-katib-task
 spec:
+  # 重点 1: 声明 workspace, 让该 Task 可以从 Pipeline 的 shared-workspace 中获取文件
+  workspaces:
+    - name: source
+      description: "Workspace containing the Katib experiment file"
+
   params:
     - name: KATIB_EXPERIMENT_FILE
       type: string
-      default: "katib/katib-experiment.yaml"  # Katib Experiment 定义文件
+      default: "katib/katib-experiment.yaml"  # 这个是相对 /workspace/source 的路径
+
   results:
     - name: best-learning-rate
     - name: best-batch-size
+
   steps:
+    # 可选: 用 busybox 打印 /workspace/source 内容, 确认文件是否存在
+    - name: debug-check-files
+      image: busybox
+      workingDir: /workspace/source  # 到 /workspace/source 下查看
+      script: |
+        #!/bin/sh
+        echo "=== Debugging /workspace/source ==="
+        ls -al
+        echo "=== Checking katib dir ==="
+        ls -al katib || true
+        echo "===================================="
+
     - name: apply-katib
       image: bitnami/kubectl:latest
+      workingDir: /workspace/source
       script: |
         #!/usr/bin/env sh
-        echo "Applying Katib Experiment..."
+        echo "Checking for existing Experiment..."
+
+        EXP_NAME=$(yq e '.metadata.name' $(params.KATIB_EXPERIMENT_FILE))
+        EXISTING_EXP=$(kubectl get experiment $EXP_NAME -n default --ignore-not-found)
+
+        if [ -n "$EXISTING_EXP" ]; then
+          echo "Experiment $EXP_NAME already exists. Deleting..."
+          kubectl delete experiment $EXP_NAME -n default
+        fi
+
+        echo "Applying new Experiment..."
         kubectl apply -f $(params.KATIB_EXPERIMENT_FILE)
+
 
     - name: wait-katib
       image: bitnami/kubectl:latest
+      workingDir: /workspace/source
       script: |
         #!/usr/bin/env sh
         EXP_NAME=$(yq e '.metadata.name' $(params.KATIB_EXPERIMENT_FILE))

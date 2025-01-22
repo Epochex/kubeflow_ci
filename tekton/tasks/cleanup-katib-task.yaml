@@ -1,0 +1,14 @@
+# kubeflow_ci/tekton/tasks/cleanup-katib-task.yaml
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: cleanup-katib-task
+spec:
+  steps:
+    - name: delete-existing-experiment
+      image: bitnami/kubectl:latest
+      script: |
+        #!/usr/bin/env sh
+        echo "Cleaning up old Katib Experiments..."
+        kubectl delete experiment ann-hpo-experiment -n default --ignore-not-found
+        echo "Cleanup completed."
