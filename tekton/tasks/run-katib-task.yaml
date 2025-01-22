@@ -46,13 +46,13 @@ spec:
 
         echo "Applying new Experiment..."
         kubectl apply -f $(params.KATIB_EXPERIMENT_FILE)
-        
+
     - name: check-dataset
       image: busybox
       script: |
         #!/bin/sh
-        if [ ! -f /workspace/data/load_stimulus_global.csv ]; then
-          echo "Dataset file is missing: /workspace/data/load_stimulus_global.csv"
+        if [ ! -f /workspace/source/data/load_stimulus_global.csv ]; then
+          echo "Dataset file is missing: /workspace/source/data/load_stimulus_global.csv"
           exit 1
         fi
 
