@@ -4,7 +4,6 @@ kind: Task
 metadata:
   name: run-katib-task
 spec:
-  # 声明 workspace，从 Pipeline 的 shared-workspace 中获取文件
   workspaces:
     - name: source
       description: "Workspace containing the Katib experiment file"
@@ -12,14 +11,13 @@ spec:
   params:
     - name: KATIB_EXPERIMENT_FILE
       type: string
-      default: "katib/katib-experiment.yaml"  # 相对于 /workspace/source 的路径
+      default: "katib/katib-experiment.yaml"
 
   results:
     - name: best-learning-rate
     - name: best-batch-size
 
   steps:
-    # Debug workspace 内容，确认 Katib Experiment 文件是否存在
     - name: debug-check-files
       image: busybox
       workingDir: /workspace/source
@@ -31,15 +29,13 @@ spec:
         ls -al katib || true
         echo "===================================="
 
-    # 应用 Katib Experiment
     - name: apply-katib
       image: bitnami/kubectl:latest
       workingDir: /workspace/source
       script: |
         #!/usr/bin/env sh
         echo "Checking for existing Experiment..."
-        
-        # 获取 Experiment 名称
+
         EXP_NAME=$(yq e '.metadata.name' $(params.KATIB_EXPERIMENT_FILE))
         EXISTING_EXP=$(kubectl get experiment $EXP_NAME -n default --ignore-not-found)
 
@@ -50,29 +46,47 @@ spec:
 
         echo "Applying new Experiment..."
         kubectl apply -f $(params.KATIB_EXPERIMENT_FILE)
+        
+    - name: check-dataset
+      image: busybox
+      script: |
+        #!/bin/sh
+        if [ ! -f /workspace/data/load_stimulus_global.csv ]; then
+          echo "Dataset file is missing: /workspace/data/load_stimulus_global.csv"
+          exit 1
+        fi
 
-    # 等待 Katib Experiment 完成
     - name: wait-katib
       image: bitnami/kubectl:latest
       workingDir: /workspace/source
       script: |
         #!/usr/bin/env sh
+        set -e
+
         EXP_NAME=$(yq e '.metadata.name' $(params.KATIB_EXPERIMENT_FILE))
         echo "Waiting for Katib Experiment: $EXP_NAME..."
 
-        TIMEOUT=600  # 设置最大等待时间（秒）
-        INTERVAL=10  # 检查间隔（秒）
-        ELAPSED=0    # 已等待时间
+        TIMEOUT=1800  # 增加最大等待时间（秒）
+        INTERVAL=10   # 检查间隔（秒）
+        ELAPSED=0     # 已等待时间
 
         while true
         do
-          STATUS_JSON=$(kubectl get experiment $EXP_NAME -n default -o json || true)
+          RAW_JSON=$(kubectl get experiment $EXP_NAME -n default -o json 2>/dev/null || true)
+          if [ -z "$RAW_JSON" ]; then
+            echo "No Experiment JSON found. Retrying..."
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+            if [ $ELAPSED -ge $TIMEOUT ]; then
+              echo "Error: Timeout waiting for Experiment to appear."
+              exit 1
+            fi
+            continue
+          fi
 
-          # Debug: 输出 JSON 内容到日志
-          echo "DEBUG: STATUS_JSON = $STATUS_JSON"
+          CLEAN_JSON=$(echo "$RAW_JSON" | tr -d '\000-\031' | sed $'s/[\x00-\x1F]//g')
 
-          # 检查 JSON 格式是否有效
-          if [ -z "$STATUS_JSON" ] || ! echo "$STATUS_JSON" | jq empty; then
+          if [ -z "$CLEAN_JSON" ] || ! echo "$CLEAN_JSON" | jq empty; then
             echo "Invalid or empty JSON data received. Retrying..."
             sleep $INTERVAL
             ELAPSED=$((ELAPSED + INTERVAL))
@@ -83,17 +97,22 @@ spec:
             continue
           fi
 
-          # 检查 Experiment 状态
-          PHASE=$(echo "$STATUS_JSON" | jq -r '.items[0].status.conditions[] | select(.type=="Succeeded").status // empty')
+          PHASE=$(echo "$CLEAN_JSON" | jq -r '.status.conditions[] | select(.type=="Succeeded").status // empty')
 
           if [ "$PHASE" = "True" ]; then
             echo "Katib Experiment Succeeded!"
             break
           fi
 
-          RUNNING=$(echo "$STATUS_JSON" | jq -r '.items[0].status.conditions[] | select(.type=="Running").status // empty')
+          RUNNING=$(echo "$CLEAN_JSON" | jq -r '.status.conditions[] | select(.type=="Running").status // empty')
           if [ "$RUNNING" = "True" ]; then
             echo "Experiment is still running..."
+            echo "Current running trials:"
+            kubectl get trials -n default -o wide
+          else
+            echo "Experiment not yet succeeded or running."
+            echo "Conditions: "
+            echo "$CLEAN_JSON" | jq '.status.conditions'
           fi
 
           ELAPSED=$((ELAPSED + INTERVAL))
@@ -105,8 +124,7 @@ spec:
           sleep $INTERVAL
         done
 
-        # 获取最佳 Trial 参数
-        BEST_TRIAL=$(echo "$STATUS_JSON" | jq -r '.items[0].status.currentOptimalTrial.parameterAssignments // empty')
+        BEST_TRIAL=$(echo "$CLEAN_JSON" | jq -r '.status.currentOptimalTrial.parameterAssignments // empty')
         if [ -z "$BEST_TRIAL" ]; then
           echo "Error: No optimal trial found."
           exit 1
@@ -117,6 +135,6 @@ spec:
         BEST_LR=$(echo "$BEST_TRIAL" | jq -r '.[] | select(.name=="learning_rate") | .value // empty')
         BEST_BS=$(echo "$BEST_TRIAL" | jq -r '.[] | select(.name=="batch_size") | .value // empty')
 
-        # 输出最佳参数到 Tekton Results
         echo "best-learning-rate=$BEST_LR" >> /tekton/results/best-learning-rate
         echo "best-batch-size=$BEST_BS" >> /tekton/results/best-batch-size
+

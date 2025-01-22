@@ -22,7 +22,8 @@ def main():
             batch_size = int(arg.split("=")[1])
 
     # 读取数据
-    df = pd.read_csv("/workspace/data/load_stimulus_global.csv ")
+    # df = pd.read_csv("/workspace/data/load_stimulus_global.csv ")
+    df = pd.read_csv("/workspace/data/source/load_stimulus_global.csv")
     # 假设只取几列做特征:
     feature_cols = ["input_rate", "output_rate", "latency"]
     # 简单定义个二分类标签: latency>6 为1, 否则0
