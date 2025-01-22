@@ -68,27 +68,30 @@ spec:
         do
           STATUS_JSON=$(kubectl get experiment $EXP_NAME -n default -o json || true)
 
-          # 检查 Experiment JSON 是否有效
-          if [ -z "$STATUS_JSON" ] || [ "$STATUS_JSON" = "null" ]; then
-            echo "Experiment $EXP_NAME not found. Retrying..."
+          # Debug: 输出 JSON 内容到日志
+          echo "DEBUG: STATUS_JSON = $STATUS_JSON"
+
+          # 检查 JSON 格式是否有效
+          if [ -z "$STATUS_JSON" ] || ! echo "$STATUS_JSON" | jq empty; then
+            echo "Invalid or empty JSON data received. Retrying..."
             sleep $INTERVAL
             ELAPSED=$((ELAPSED + INTERVAL))
             if [ $ELAPSED -ge $TIMEOUT ]; then
-              echo "Error: Timeout waiting for Experiment to be created."
+              echo "Error: Timeout waiting for valid Experiment data."
               exit 1
             fi
             continue
           fi
 
           # 检查 Experiment 状态
-          PHASE=$(echo $STATUS_JSON | jq -r '.status.conditions[] | select(.type=="Succeeded").status // empty')
+          PHASE=$(echo "$STATUS_JSON" | jq -r '.items[0].status.conditions[] | select(.type=="Succeeded").status // empty')
 
           if [ "$PHASE" = "True" ]; then
             echo "Katib Experiment Succeeded!"
             break
           fi
 
-          RUNNING=$(echo $STATUS_JSON | jq -r '.status.conditions[] | select(.type=="Running").status // empty')
+          RUNNING=$(echo "$STATUS_JSON" | jq -r '.items[0].status.conditions[] | select(.type=="Running").status // empty')
           if [ "$RUNNING" = "True" ]; then
             echo "Experiment is still running..."
           fi
@@ -103,7 +106,7 @@ spec:
         done
 
         # 获取最佳 Trial 参数
-        BEST_TRIAL=$(echo $STATUS_JSON | jq -r '.status.currentOptimalTrial.parameterAssignments // empty')
+        BEST_TRIAL=$(echo "$STATUS_JSON" | jq -r '.items[0].status.currentOptimalTrial.parameterAssignments // empty')
         if [ -z "$BEST_TRIAL" ]; then
           echo "Error: No optimal trial found."
           exit 1
@@ -111,8 +114,8 @@ spec:
 
         echo "Best Trial param assignments: $BEST_TRIAL"
 
-        BEST_LR=$(echo $BEST_TRIAL | jq -r '.[] | select(.name=="learning_rate") | .value // empty')
-        BEST_BS=$(echo $BEST_TRIAL | jq -r '.[] | select(.name=="batch_size") | .value // empty')
+        BEST_LR=$(echo "$BEST_TRIAL" | jq -r '.[] | select(.name=="learning_rate") | .value // empty')
+        BEST_BS=$(echo "$BEST_TRIAL" | jq -r '.[] | select(.name=="batch_size") | .value // empty')
 
         # 输出最佳参数到 Tekton Results
         echo "best-learning-rate=$BEST_LR" >> /tekton/results/best-learning-rate
