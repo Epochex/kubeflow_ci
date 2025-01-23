@@ -1,22 +1,18 @@
 # kubeflow_ci/katib/katib-experiment.yaml
-apiVersion: kubeflow.org/v1beta1
+apiVersion: kubeflow.org/v1
 kind: Experiment
 metadata:
   name: ann-hpo-experiment
   namespace: default
 spec:
-  objective:
-    type: maximize
-    goal: 0.95
-    objectiveMetricName: "accuracy"
-
+  # Example: 使用 Random 搜索，最大并发3，最多执行9个 Trial
   algorithm:
-    algorithmName: "random"
-
-  parallelTrialCount: 2
-  maxTrialCount: 5
+    algorithmName: random
+  maxTrialCount: 9
+  parallelTrialCount: 3
   maxFailedTrialCount: 3
 
+  # 需要调优的超参列表
   parameters:
     - name: learning_rate
       parameterType: double
@@ -27,44 +23,63 @@ spec:
       parameterType: int
       feasibleSpace:
         min: "16"
-        max: "64"
+        max: "128"
 
+  # Katib如何从训练脚本中采集metrics
+  objective:
+    type: maximize
+    goal: 0.9
+    objectiveMetricName: accuracy
+    additionalMetricNames:
+      - loss
+
+  # Trial 模版：指定如何启动训练容器
   trialTemplate:
     primaryContainerName: training-container
+
+    # Trial里对参数的引用映射
     trialParameters:
-      - name: lr
-        description: "learning rate"
-        reference: "learning_rate"
-      - name: bs
-        description: "batch size"
-        reference: "batch_size"
+      - name: learningRate
+        description: "LR for training"
+        reference: "--lr="
+      - name: batchSize
+        description: "BatchSize for training"
+        reference: "--batch_size="
 
+    # Trial要生成的Pod/Job规范
     trialSpec:
-      apiVersion: batch/v1
-      kind: Job
-      spec:
-        template:
-          spec:
-            containers:
-            - name: training-container
-              image: "docker.io/hirschazer/kubeflow_ci:latest"
-              command:
-              - "python"
-              args:
-              - "/app/scripts/train.py"
-              - "--lr=${trialParameters.lr}"
-              - "--batch_size=${trialParameters.bs}"
-              volumeMounts:
-              - name: dataset-volume
-                mountPath: /workspace/data
-
-            volumes:
+      template:
+        spec:
+          # 1) 挂载PVC
+          volumes:
             - name: dataset-volume
               persistentVolumeClaim:
-                claimName: ci-pvc
+                claimName: ci-pvc  # 跟你的 PipelineRun 里用的PVC一致
 
-            restartPolicy: Never
+          # 2) 定义容器：训练脚本所在镜像 + 命令
+          containers:
+            - name: training-container
+              image: docker.io/hirschazer/kubeflow_ci:latest
+              command:
+                - sh
+                - -c
+              # 这里使用 trialParameters 的值
+              args:
+                - >
+                  python /app/scripts/train.py
+                  --lr=${trialParameters.learningRate}
+                  --batch_size=${trialParameters.batchSize}
+                  1>/var/log/katib/metrics.log
+                  2>&1 &&
+                  echo completed > /var/log/katib/$$$.pid
 
+              # 3) 将 dataset-volume 挂载到 /workspace/source
+              volumeMounts:
+                - name: dataset-volume
+                  mountPath: /workspace/data
+
+          # Katib的 Metrics Collector
+          restartPolicy: Never
 
 
 

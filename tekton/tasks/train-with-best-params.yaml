@@ -27,10 +27,10 @@ spec:
         echo "=== Final training with best hyperparams ==="
         echo "LR: $(params.BEST_LR), BS: $(params.BEST_BS)"
 
-        # train_final.py <learning_rate> <batch_size>
+        # 注意，这里脚本本身会从 /workspace/source/data/xxx.csv 读取
         python scripts/train_final.py $(params.BEST_LR) $(params.BEST_BS)
 
         echo "=== Checking data volume ==="
-        ls -al /workspace/data
+        ls -al /workspace/source/data || true
 
         echo "=== Final training completed ==="
